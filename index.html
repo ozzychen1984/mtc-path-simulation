@@ -368,39 +368,44 @@
                 return false;
             }
             
-            // 動態計算機器車在任意角度下的真實佔用空間，並將其推回場地內
-            function clampRobotPosition() {
-                if (robot.angle === undefined) return;
+            // 動態計算物件(含機器車與道具)在任意角度下的真實佔用空間，並將其推回場地內
+            function clampObjectPosition(obj) {
+                if (obj.angle === undefined) return;
                 
-                const rad = robot.angle * Math.PI / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-                
-                // 定義機器車四個角落的相對座標 (包含車身與前方夾子)
-                const bounds = getObjectBounds(robot);
-                const corners = [
-                    { x: bounds.left, y: bounds.top },    // 左上
-                    { x: bounds.right, y: bounds.top },   // 右上
-                    { x: bounds.left, y: bounds.bottom }, // 左下
-                    { x: bounds.right, y: bounds.bottom } // 右下
-                ];
-                
-                // 計算旋轉後的最大外圍半徑 (在 X 與 Y 方向的投影)
+                const bounds = getObjectBounds(obj);
                 let maxDx = 0, minDx = 0;
                 let maxDy = 0, minDy = 0;
+
+                if (bounds.radius) {
+                    // 圓形道具 (紅圓球)
+                    maxDx = bounds.radius; minDx = -bounds.radius;
+                    maxDy = bounds.radius; minDy = -bounds.radius;
+                } else {
+                    // 矩形物件 (機器車、黃正方、藍長方)
+                    const rad = obj.angle * Math.PI / 180;
+                    const cos = Math.cos(rad);
+                    const sin = Math.sin(rad);
+                    
+                    const corners = [
+                        { x: bounds.left, y: bounds.top },    // 左上
+                        { x: bounds.right, y: bounds.top },   // 右上
+                        { x: bounds.left, y: bounds.bottom }, // 左下
+                        { x: bounds.right, y: bounds.bottom } // 右下
+                    ];
+                    
+                    corners.forEach(p => {
+                        const rotX = p.x * cos - p.y * sin;
+                        const rotY = p.x * sin + p.y * cos;
+                        maxDx = Math.max(maxDx, rotX);
+                        minDx = Math.min(minDx, rotX);
+                        maxDy = Math.max(maxDy, rotY);
+                        minDy = Math.min(minDy, rotY);
+                    });
+                }
                 
-                corners.forEach(p => {
-                    const rotX = p.x * cos - p.y * sin;
-                    const rotY = p.x * sin + p.y * cos;
-                    maxDx = Math.max(maxDx, rotX);
-                    minDx = Math.min(minDx, rotX);
-                    maxDy = Math.max(maxDy, rotY);
-                    minDy = Math.min(minDy, rotY);
-                });
-                
-                // 將車體圓心限制在「場地邊界」減去「旋轉後的凸出距離」之內
-                robot.x = Math.max(-minDx, Math.min(fieldWidthCM - maxDx, robot.x));
-                robot.y = Math.max(-minDy, Math.min(fieldHeightCM - maxDy, robot.y));
+                // 將物件圓心/定位點限制在「場地邊界」減去「旋轉後的凸出距離」之內
+                obj.x = Math.max(-minDx, Math.min(fieldWidthCM - maxDx, obj.x));
+                obj.y = Math.max(-minDy, Math.min(fieldHeightCM - maxDy, obj.y));
             }
 
             function getEventCoords(e) {
@@ -465,13 +470,13 @@
                     angle += 90; // 校正把手定義
                     selectedObject.angle = (angle + 360) % 360;
                     
-                    if (selectedObject.id === 'robot') clampRobotPosition();
+                    clampObjectPosition(selectedObject);
                     updateDisplays();
                 } else if (isDragging) {
                     selectedObject.x = coords.x - dragOffsetX;
                     selectedObject.y = coords.y - dragOffsetY;
                     
-                    if (selectedObject.id === 'robot') clampRobotPosition();
+                    clampObjectPosition(selectedObject);
                     updateDisplays();
                 }
             });
@@ -489,7 +494,7 @@
             rotateCCWBtn.addEventListener('click', () => {
                 if (selectedObject) {
                     selectedObject.angle = (selectedObject.angle - 90 + 360) % 360;
-                    if (selectedObject.id === 'robot') clampRobotPosition();
+                    clampObjectPosition(selectedObject);
                     updateDisplays();
                 }
             });
@@ -497,7 +502,7 @@
             rotateCWBtn.addEventListener('click', () => {
                 if (selectedObject) {
                     selectedObject.angle = (selectedObject.angle + 90) % 360;
-                    if (selectedObject.id === 'robot') clampRobotPosition();
+                    clampObjectPosition(selectedObject);
                     updateDisplays();
                 }
             });
@@ -920,7 +925,10 @@
                 lastRecordX = originX;
                 lastRecordY = originY;
                 
-                clampRobotPosition();
+                // 場地大小改變時，檢查所有物件是否超出新邊界
+                clampObjectPosition(robot);
+                fieldObjects.forEach(obj => clampObjectPosition(obj));
+                
                 resizeCanvas();
                 updateDisplays();
             });
